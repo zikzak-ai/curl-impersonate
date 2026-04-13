@@ -54,12 +54,7 @@ with_ca_path = @with_ca_path@
 CC = @CC@
 CXX = @CXX@
 STRIP = @STRIP@
-cc_words := $(strip $(CC))
-cxx_words := $(strip $(CXX))
-cc_compiler := $(firstword $(cc_words))
-cxx_compiler := $(firstword $(cxx_words))
-cc_extra_flags := $(filter -%,$(wordlist 2,$(words $(cc_words)),$(cc_words)))
-cxx_extra_flags := $(filter -%,$(wordlist 2,$(words $(cxx_words)),$(cxx_words)))
+
 
 # https://github.com/google/brotli/commit/641bec0e30bea648b3da1cd90fc6b44deb429f71
 brotli_install_dir := $(abspath brotli-$(BROTLI_VERSION)/out/installed)
@@ -169,11 +164,7 @@ zlib-$(ZLIB_VERSION).tar.gz:
 $(zlib_static_libs): zlib-$(ZLIB_VERSION).tar.gz
 	tar xf zlib-$(ZLIB_VERSION).tar.gz
 	cd zlib-$(ZLIB_VERSION) && \
-	if test -n "$(host_alias)"; then \
-		CHOST="$(host_alias)" CC="$(CC)" CFLAGS="$(CFLAGS) -fPIC" ./configure --prefix=$(zlib_install_dir); \
-	else \
-		CC="$(CC)" CFLAGS="$(CFLAGS) -fPIC" ./configure --prefix=$(zlib_install_dir); \
-	fi && \
+	CC="$(CC)" CFLAGS="$(CFLAGS) -fPIC" ./configure --prefix=$(zlib_install_dir) && \
 	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 	# Make sure curl doesn't link against an unversioned .so (Linux only).
@@ -184,12 +175,12 @@ zstd-$(ZSTD_VERSION).tar.gz:
 
 $(zstd_static_libs): zstd-$(ZSTD_VERSION).tar.gz
 	tar xf zstd-$(ZSTD_VERSION).tar.gz
-	cd zstd-$(ZSTD_VERSION) && \
-	$(MAKE) -C lib CC="$(CC)" AR="$(AR)" RANLIB="$(RANLIB)" BUILD_SHARED=0 BUILD_STATIC=1 CFLAGS="$(CFLAGS) -fPIC" MAKEFLAGS=-j$(SUBJOBS) libzstd.a
-	mkdir -p $(zstd_install_dir)/lib
-	mkdir -p $(zstd_install_dir)/include
-	cp lib/libzstd.a $(zstd_install_dir)/lib/
-	cp lib/*.h $(zstd_install_dir)/include/
+	cd zstd-$(ZSTD_VERSION)/lib && \
+	$(MAKE) CC="$(CC)" AR="$(AR)" RANLIB="$(RANLIB)" BUILD_SHARED=0 BUILD_STATIC=1 CFLAGS="$(CFLAGS) -fPIC" MAKEFLAGS=-j$(SUBJOBS) libzstd.a && \
+	mkdir -p $(zstd_install_dir)/lib && \
+	mkdir -p $(zstd_install_dir)/include && \
+	cp libzstd.a $(zstd_install_dir)/lib/ && \
+	cp *.h $(zstd_install_dir)/include/
 
 brotli-$(BROTLI_VERSION).tar.gz:
 	curl -L "https://github.com/google/brotli/archive/refs/tags/v${BROTLI_VERSION}.tar.gz" \
@@ -199,7 +190,7 @@ brotli-$(BROTLI_VERSION).tar.gz:
 brotli-$(BROTLI_VERSION)/.patched: $(srcdir)/patches/brotli.patch
 	tar xf brotli-$(BROTLI_VERSION).tar.gz
 	cd brotli-$(BROTLI_VERSION)
-	for p in $^; do patch -p1 < $$p; done
+	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/.patched
@@ -228,10 +219,10 @@ $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/
 	@cmake@ -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=./installed \
 		-DCMAKE_INSTALL_LIBDIR=lib \
-		-DCMAKE_CXX_COMPILER=$(cxx_compiler) \
-		-DCMAKE_C_COMPILER=$(cc_compiler) \
-		-DCMAKE_C_FLAGS="$(CFLAGS) $(cc_extra_flags)" \
-		-DCMAKE_CXX_FLAGS="$(CXXFLAGS) $(cxx_extra_flags)" \
+		-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
+		-DCMAKE_C_COMPILER="$(firstword $(CC))" \
+		-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS)" \
+		-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS)" \
 		-DCMAKE_SYSTEM_NAME=$$system_name \
 		-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
 		-DBUILD_SHARED_LIBS=OFF \
@@ -241,7 +232,7 @@ $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/
 		-DBROTLI_BUILD_TOOLS=OFF \
 		-DCMAKE_MACOSX_BUNDLE=OFF \
 		$(CMAKE_EXTRA_ARGS) \
-		..
+		"$(srcdir)/brotli-$(BROTLI_VERSION)"
 
 	@cmake@ --build . --config Release --target install --parallel $(SUBJOBS)
 
@@ -255,7 +246,7 @@ boringssl-$(BORING_SSL_COMMIT)/.patched: $(srcdir)/patches/boringssl.patch
 	unzip -q -o boringssl-$(BORING_SSL_COMMIT).zip
 	# mv boringssl boringssl-$(BORING_SSL_COMMIT)
 	cd boringssl-$(BORING_SSL_COMMIT)/
-	for p in $^; do patch -p1 < $$p; done
+	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(boringssl_static_libs): boringssl-$(BORING_SSL_COMMIT).zip boringssl-$(BORING_SSL_COMMIT)/.patched
@@ -301,16 +292,16 @@ $(boringssl_static_libs): boringssl-$(BORING_SSL_COMMIT).zip boringssl-$(BORING_
 	# prevent clang from failing on them.
 	@cmake@ -DCMAKE_BUILD_TYPE=Release \
 			-DCMAKE_POSITION_INDEPENDENT_CODE=on \
-			-DCMAKE_C_FLAGS="$(CFLAGS) $(cc_extra_flags) -Wno-unknown-warning-option -Wno-stringop-overflow -Wno-array-bounds -Wno-macro-redefined" \
-			-DCMAKE_CXX_FLAGS="$(CXXFLAGS) $(cxx_extra_flags) -Wno-macro-redefined" \
-			-DCMAKE_CXX_COMPILER=$(cxx_compiler) \
-			-DCMAKE_C_COMPILER=$(cc_compiler) \
+			-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS) -Wno-unknown-warning-option -Wno-stringop-overflow -Wno-array-bounds -Wno-macro-redefined" \
+			-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS) -Wno-macro-redefined" \
+			-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
+			-DCMAKE_C_COMPILER="$(firstword $(CC))" \
 			-DCMAKE_SYSTEM_NAME=$$system_name \
 			-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
 			$$cmake_osx_flags \
 			-GNinja \
 			$(CMAKE_EXTRA_ARGS) \
-			..
+			"$(srcdir)/boringssl-$(BORING_SSL_COMMIT)"
 	@ninja@ -j$(SUBJOBS) crypto ssl
 
 	# Fix the directory structure so that curl can compile against it.
@@ -350,7 +341,7 @@ ngtcp2-$(NGTCP2_VERSION).tar.bz2:
 ngtcp2-$(NGTCP2_VERSION)/.patched: $(srcdir)/patches/ngtcp2.patch
 	tar -xf ngtcp2-$(NGTCP2_VERSION).tar.bz2
 	cd ngtcp2-$(NGTCP2_VERSION)
-	for p in $^; do patch -p1 < $$p; done
+	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(ngtcp2_static_libs): ngtcp2-$(NGTCP2_VERSION).tar.bz2 ngtcp2-$(NGTCP2_VERSION)/.patched $(boringssl_static_libs)
@@ -385,7 +376,7 @@ nghttp3-$(NGHTTP3_VERSION).tar.bz2:
 nghttp3-$(NGHTTP3_VERSION)/.patched: $(srcdir)/patches/nghttp3.patch
 	tar -xf nghttp3-$(NGHTTP3_VERSION).tar.bz2
 	cd nghttp3-$(NGHTTP3_VERSION)
-	for p in $^; do patch -p1 < $$p; done
+	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(nghttp3_static_libs): nghttp3-$(NGHTTP3_VERSION).tar.bz2 nghttp3-$(NGHTTP3_VERSION)/.patched
@@ -453,7 +444,7 @@ $(CURL_VERSION)/.patched: $(srcdir)/patches/curl.patch
 	tar -xf $(CURL_VERSION).tar.gz
 	mv curl-$(CURL_VERSION) $(CURL_VERSION)  # fix directory name
 	cd $(CURL_VERSION)
-	for p in $^; do patch -p1 < $$p; done
+	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	# Re-generate the configure script
 	autoreconf -fi
 	touch .patched
