@@ -168,16 +168,13 @@ zlib-$(ZLIB_VERSION).tar.gz:
 
 $(zlib_static_libs): zlib-$(ZLIB_VERSION).tar.gz
 	tar xf zlib-$(ZLIB_VERSION).tar.gz
-	cd zlib-$(ZLIB_VERSION)
-	{ \
-		config_flags="--prefix=$(zlib_install_dir) --static"; \
-		if test -n "$(host_alias)"; then \
-			CHOST="$(host_alias)" CFLAGS="$(CFLAGS) -fPIC" ./configure $$config_flags; \
-		else \
-			CFLAGS="$(CFLAGS) -fPIC" ./configure $$config_flags; \
-		fi; \
-	}
-	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
+	cd zlib-$(ZLIB_VERSION) && \
+	if test -n "$(host_alias)"; then \
+		CHOST="$(host_alias)" CC="$(CC)" CFLAGS="$(CFLAGS) -fPIC" ./configure --prefix=$(zlib_install_dir); \
+	else \
+		CC="$(CC)" CFLAGS="$(CFLAGS) -fPIC" ./configure --prefix=$(zlib_install_dir); \
+	fi && \
+	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 	# Make sure curl doesn't link against an unversioned .so (Linux only).
 	rm -f $(zlib_install_dir)/lib/libz.so
@@ -187,8 +184,8 @@ zstd-$(ZSTD_VERSION).tar.gz:
 
 $(zstd_static_libs): zstd-$(ZSTD_VERSION).tar.gz
 	tar xf zstd-$(ZSTD_VERSION).tar.gz
-	cd zstd-$(ZSTD_VERSION)
-	$(MAKE) -C lib BUILD_SHARED=0 BUILD_STATIC=1 CFLAGS="$(CFLAGS) -fPIC" MAKEFLAGS=-j$(SUBJOBS) libzstd.a
+	cd zstd-$(ZSTD_VERSION) && \
+	$(MAKE) -C lib CC="$(CC)" AR="$(AR)" RANLIB="$(RANLIB)" BUILD_SHARED=0 BUILD_STATIC=1 CFLAGS="$(CFLAGS) -fPIC" MAKEFLAGS=-j$(SUBJOBS) libzstd.a
 	mkdir -p $(zstd_install_dir)/lib
 	mkdir -p $(zstd_install_dir)/include
 	cp lib/libzstd.a $(zstd_install_dir)/lib/
@@ -328,7 +325,7 @@ nghttp2-$(NGHTTP2_VERSION).tar.bz2:
 
 $(nghttp2_static_libs): nghttp2-$(NGHTTP2_VERSION).tar.bz2
 	tar -xf nghttp2-$(NGHTTP2_VERSION).tar.bz2
-	cd nghttp2-$(NGHTTP2_VERSION)
+	cd nghttp2-$(NGHTTP2_VERSION) && \
 
 	# Set up the configure flags to nghttp2.
 	# If the user provided the --host flag to our configure script
@@ -340,9 +337,9 @@ $(nghttp2_static_libs): nghttp2-$(NGHTTP2_VERSION).tar.bz2
 		if test -n "$(host_alias)"; then \
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
-	}
+	} && \
 
-	CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags
 	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
 	$(MAKE) install MAKEFLAGS=
 
@@ -371,9 +368,9 @@ $(ngtcp2_static_libs): ngtcp2-$(NGTCP2_VERSION).tar.bz2 ngtcp2-$(NGTCP2_VERSION)
 		if test -n "$(host_alias)"; then \
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
-	}
+	} && \
 
-	CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure PKG_CONFIG_PATH=$(nghttp3_install_dir)/lib/pkgconfig \
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure PKG_CONFIG_PATH=$(nghttp3_install_dir)/lib/pkgconfig \
 		BORINGSSL_LIBS="-L$(boringssl_install_dir)/ssl -lssl -L$(boringssl_install_dir)/crypto -lcrypto -pthread" \
 		BORINGSSL_CFLAGS="-I$(boringssl_dir)/include" \
 		--with-boringssl \
@@ -404,9 +401,9 @@ $(nghttp3_static_libs): nghttp3-$(NGHTTP3_VERSION).tar.bz2 nghttp3-$(NGHTTP3_VER
 		if test -n "$(host_alias)"; then \
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
-	}
+	} && \
 
-	CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags
 	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
 	$(MAKE) install MAKEFLAGS=
 
@@ -422,8 +419,8 @@ $(libunistring_static_libs): libunistring-$(LIBUNISTRING_VERSION).tar.gz
 		if test -n "$(host_alias)"; then \
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
-	}
-	CFLAGS="$(CFLAGS) -fPIC" ./configure $$config_flags
+	} && \
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" ./configure $$config_flags
 	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
 	$(MAKE) install MAKEFLAGS=
 
@@ -441,7 +438,7 @@ $(libidn2_static_libs): libidn2-$(LIBIDN2_VERSION).tar.gz $(libunistring_static_
 		fi; \
 	}
 	PKG_CONFIG_PATH="$(libunistring_install_dir)/lib/pkgconfig" \
-	CFLAGS="$(CFLAGS) -fPIC" \
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" \
 		./configure $$config_flags
 	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
 	$(MAKE) install MAKEFLAGS=
@@ -534,6 +531,11 @@ $(CURL_VERSION)/.chrome: $(chrome_libs)	$(CURL_VERSION).tar.gz $(CURL_VERSION)/.
 	LD_LIBRARY_PATH="$$lib_path" \
 	PKG_CONFIG_LIBDIR= \
 	PKG_CONFIG_PATH="$(ngtcp2_install_dir)/lib/pkgconfig" \
+	CC="$(CC)" \
+	CXX="$(CXX)" \
+	AR="$(AR)" \
+	RANLIB="$(RANLIB)" \
+	STRIP="$(STRIP)" \
 	LDFLAGS="$(LDFLAGS)" \
 		./configure \
 			 $$config_flags \
