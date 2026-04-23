@@ -2,7 +2,7 @@
 # Some Makefile tricks were taken from https://tech.davis-hansson.com/p/make/
 
 SHELL := bash
-.ONESHELL:
+
 .SHELLFLAGS := -euc
 .DELETE_ON_ERROR:
 # MAKEFLAGS += --warn-undefined-variables
@@ -195,46 +195,34 @@ brotli-$(BROTLI_VERSION)/.patched: $(srcdir)/patches/brotli.patch
 
 $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/.patched
 	mkdir -p brotli-$(BROTLI_VERSION)/out
-	cd brotli-$(BROTLI_VERSION)/out
-
-	# Convert autoconf style os name to CMake style os name.
-	case $(host_os) in               \
-		linux*)                      \
-			system_name=Linux        \
-			;;                       \
-		*android*)                   \
-			system_name=Android      \
-			;;                       \
-		ios*)                        \
-			system_name=iOS          \
-			;;                       \
-		darwin*)                     \
-			system_name=Darwin       \
-			;;                       \
-		*)                           \
-			system_name=$(host_os)   \
-			;;                       \
-	esac
-
-	@cmake@ -DCMAKE_BUILD_TYPE=Release \
-		-DCMAKE_INSTALL_PREFIX=./installed \
-		-DCMAKE_INSTALL_LIBDIR=lib \
-		-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
-		-DCMAKE_C_COMPILER="$(firstword $(CC))" \
-		-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS)" \
-		-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS)" \
-		-DCMAKE_SYSTEM_NAME=$$system_name \
-		-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
-		-DBUILD_SHARED_LIBS=OFF \
-		-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-		-DBROTLI_DISABLE_TESTS=ON \
-		-DBROTLI_DISABLE_TOOLS=ON \
-		-DBROTLI_BUILD_TOOLS=OFF \
-		-DCMAKE_MACOSX_BUNDLE=OFF \
-		$(CMAKE_EXTRA_ARGS) \
-		"$(srcdir)/brotli-$(BROTLI_VERSION)"
-
-	@cmake@ --build . --config Release --target install --parallel $(SUBJOBS)
+	cd brotli-$(BROTLI_VERSION)/out && \
+	{ \
+		case $(host_os) in \
+			linux*) system_name=Linux ;; \
+			*android*) system_name=Android ;; \
+			ios*) system_name=iOS ;; \
+			darwin*) system_name=Darwin ;; \
+			*) system_name=$(host_os) ;; \
+		esac; \
+		@cmake@ -DCMAKE_BUILD_TYPE=Release \
+			-DCMAKE_INSTALL_PREFIX=./installed \
+			-DCMAKE_INSTALL_LIBDIR=lib \
+			-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
+			-DCMAKE_C_COMPILER="$(firstword $(CC))" \
+			-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS)" \
+			-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS)" \
+			-DCMAKE_SYSTEM_NAME="$$system_name" \
+			-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
+			-DBUILD_SHARED_LIBS=OFF \
+			-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+			-DBROTLI_DISABLE_TESTS=ON \
+			-DBROTLI_DISABLE_TOOLS=ON \
+			-DBROTLI_BUILD_TOOLS=OFF \
+			-DCMAKE_MACOSX_BUNDLE=OFF \
+			$(CMAKE_EXTRA_ARGS) \
+			"$(srcdir)/brotli-$(BROTLI_VERSION)" && \
+		@cmake@ --build . --config Release --target install --parallel $(SUBJOBS); \
+	}
 
 
 boringssl-$(BORING_SSL_COMMIT).zip:
@@ -251,28 +239,15 @@ boringssl-$(BORING_SSL_COMMIT)/.patched: $(srcdir)/patches/boringssl.patch
 
 $(boringssl_static_libs): boringssl-$(BORING_SSL_COMMIT).zip boringssl-$(BORING_SSL_COMMIT)/.patched
 	mkdir -p $(boringssl_install_dir)
-	cd $(boringssl_install_dir)
-
-	# Convert autoconf style os name to CMake style os name.
-	case $(host_os) in          \
-		linux*)                 \
-			system_name=Linux   \
-			;;                  \
-		*android*)              \
-			system_name=Android \
-			;;                  \
-		ios*)                   \
-			system_name=iOS     \
-			;;                  \
-		darwin*|tvos*|watchos*) \
-			system_name=Darwin  \
-			;;                  \
-		*)                      \
-			system_name=Linux   \
-			;;                  \
-	esac
-
+	cd $(boringssl_install_dir) && \
 	{ \
+		case $(host_os) in \
+			linux*) system_name=Linux ;; \
+			*android*) system_name=Android ;; \
+			ios*) system_name=iOS ;; \
+			darwin*|tvos*|watchos*) system_name=Darwin ;; \
+			*) system_name=Linux ;; \
+		esac; \
 		cmake_osx_flags=""; \
 		case "$(host_os)" in \
 			ios*) \
@@ -284,25 +259,20 @@ $(boringssl_static_libs): boringssl-$(BORING_SSL_COMMIT).zip boringssl-$(BORING_
 				fi; \
 				;; \
 		esac; \
+		@cmake@ -DCMAKE_BUILD_TYPE=Release \
+				-DCMAKE_POSITION_INDEPENDENT_CODE=on \
+				-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS) -Wno-unknown-warning-option -Wno-stringop-overflow -Wno-array-bounds -Wno-macro-redefined" \
+				-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS) -Wno-macro-redefined" \
+				-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
+				-DCMAKE_C_COMPILER="$(firstword $(CC))" \
+				-DCMAKE_SYSTEM_NAME="$$system_name" \
+				-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
+				$$cmake_osx_flags \
+				-GNinja \
+				$(CMAKE_EXTRA_ARGS) \
+				"$(srcdir)/boringssl-$(BORING_SSL_COMMIT)" && \
+		@ninja@ -j$(SUBJOBS) crypto ssl; \
 	}
-
-	# The extra CMAKE_C_FLAGS are needed because otherwise boringssl fails to
-	# compile in release mode on some systems with gcc 12 (e.g. Fedora).
-	# In addition, guard these options with -Wno-unknown-warning-option to
-	# prevent clang from failing on them.
-	@cmake@ -DCMAKE_BUILD_TYPE=Release \
-			-DCMAKE_POSITION_INDEPENDENT_CODE=on \
-			-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS) -Wno-unknown-warning-option -Wno-stringop-overflow -Wno-array-bounds -Wno-macro-redefined" \
-			-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS) -Wno-macro-redefined" \
-			-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
-			-DCMAKE_C_COMPILER="$(firstword $(CC))" \
-			-DCMAKE_SYSTEM_NAME=$$system_name \
-			-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
-			$$cmake_osx_flags \
-			-GNinja \
-			$(CMAKE_EXTRA_ARGS) \
-			"$(srcdir)/boringssl-$(BORING_SSL_COMMIT)"
-	@ninja@ -j$(SUBJOBS) crypto ssl
 
 	# Fix the directory structure so that curl can compile against it.
 	# See: https://everything.curl.dev/build/boringssl.html
