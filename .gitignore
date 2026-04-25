@@ -3,3 +3,34 @@ build/
 config.log
 config.status
 .DS_Store
+
+# Build artifacts
+Makefile
+autom4te.cache/
+.patched
+installed/
+*.tar.gz
+*.tar.bz2
+*.zip
+*.rej
+*.orig
+*~
+
+# Dependency directories
+boringssl-*/
+brotli-*/
+nghttp2-*/
+ngtcp2-*/
+nghttp3-*/
+zlib-*/
+zstd-*/
+libunistring-*/
+libidn2-*/
+curl-*/
+
+# Build temporary files
+cmake_install.cmake
+install_manifest.txt
+*.a
+*.pc
+export.sh

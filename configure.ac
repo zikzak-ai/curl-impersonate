@@ -39,6 +39,44 @@ AC_CHECK_PROGS([cmake], [cmake3 cmake])
 
 AC_CHECK_PROGS([ninja], [ninja ninja-build])
 
+# Convert autoconf style os name to CMake style os name.
+case $host_os in
+    linux*)
+        system_name=Linux
+        ;;
+    *android*)
+        system_name=Android
+        ;;
+    ios*)
+        system_name=iOS
+        ;;
+    darwin*)
+        system_name=Darwin
+        ;;
+    *)
+        system_name=$host_os
+        ;;
+esac
+AC_SUBST([system_name])
+
+# CMake flags for Apple platforms
+cmake_osx_flags=""
+case $host_os in
+    ios*)
+        if test -n "$SDKROOT"; then
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_SYSROOT=$SDKROOT"
+        elif test "$host_cpu" = "x86_64"; then
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_SYSROOT=iphonesimulator"
+        else
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_SYSROOT=iphoneos"
+        fi
+        if test -n "$IOS_MIN_VERSION"; then
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_MIN_VERSION"
+        fi
+        ;;
+esac
+AC_SUBST([cmake_osx_flags])
+
 AC_CONFIG_FILES([Makefile])
 
 AC_OUTPUT

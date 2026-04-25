@@ -55,6 +55,9 @@ CC = @CC@
 CXX = @CXX@
 STRIP = @STRIP@
 
+system_name = @system_name@
+cmake_osx_flags = @cmake_osx_flags@
+
 
 # https://github.com/google/brotli/commit/641bec0e30bea648b3da1cd90fc6b44deb429f71
 brotli_install_dir := $(abspath brotli-$(BROTLI_VERSION)/out/installed)
@@ -189,33 +192,13 @@ brotli-$(BROTLI_VERSION).tar.gz:
 # Patch brotli and use a dummy '.patched' file to mark it patched
 brotli-$(BROTLI_VERSION)/.patched: $(srcdir)/patches/brotli.patch
 	tar xf brotli-$(BROTLI_VERSION).tar.gz
-	cd brotli-$(BROTLI_VERSION)
+	cd brotli-$(BROTLI_VERSION) && \
 	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/.patched
 	mkdir -p brotli-$(BROTLI_VERSION)/out
-	cd brotli-$(BROTLI_VERSION)/out
-
-	# Convert autoconf style os name to CMake style os name.
-	case $(host_os) in               \
-		linux*)                      \
-			system_name=Linux        \
-			;;                       \
-		*android*)                   \
-			system_name=Android      \
-			;;                       \
-		ios*)                        \
-			system_name=iOS          \
-			;;                       \
-		darwin*)                     \
-			system_name=Darwin       \
-			;;                       \
-		*)                           \
-			system_name=$(host_os)   \
-			;;                       \
-	esac
-
+	cd brotli-$(BROTLI_VERSION)/out && \
 	@cmake@ -DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_INSTALL_PREFIX=./installed \
 		-DCMAKE_INSTALL_LIBDIR=lib \
@@ -225,6 +208,7 @@ $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/
 		-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS)" \
 		-DCMAKE_SYSTEM_NAME=$$system_name \
 		-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
+		$$cmake_osx_flags \
 		-DBUILD_SHARED_LIBS=OFF \
 		-DCMAKE_POSITION_INDEPENDENT_CODE=ON \
 		-DBROTLI_DISABLE_TESTS=ON \
@@ -232,8 +216,7 @@ $(brotli_static_libs): brotli-$(BROTLI_VERSION).tar.gz brotli-$(BROTLI_VERSION)/
 		-DBROTLI_BUILD_TOOLS=OFF \
 		-DCMAKE_MACOSX_BUNDLE=OFF \
 		$(CMAKE_EXTRA_ARGS) \
-		"$(srcdir)/brotli-$(BROTLI_VERSION)"
-
+		.. && \
 	@cmake@ --build . --config Release --target install --parallel $(SUBJOBS)
 
 
@@ -244,71 +227,32 @@ boringssl-$(BORING_SSL_COMMIT).zip:
 # Patch boringssl and use a dummy '.patched' file to mark it patched
 boringssl-$(BORING_SSL_COMMIT)/.patched: $(srcdir)/patches/boringssl.patch
 	unzip -q -o boringssl-$(BORING_SSL_COMMIT).zip
-	# mv boringssl boringssl-$(BORING_SSL_COMMIT)
-	cd boringssl-$(BORING_SSL_COMMIT)/
+	cd boringssl-$(BORING_SSL_COMMIT)/ && \
 	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(boringssl_static_libs): boringssl-$(BORING_SSL_COMMIT).zip boringssl-$(BORING_SSL_COMMIT)/.patched
 	mkdir -p $(boringssl_install_dir)
-	cd $(boringssl_install_dir)
-
-	# Convert autoconf style os name to CMake style os name.
-	case $(host_os) in          \
-		linux*)                 \
-			system_name=Linux   \
-			;;                  \
-		*android*)              \
-			system_name=Android \
-			;;                  \
-		ios*)                   \
-			system_name=iOS     \
-			;;                  \
-		darwin*|tvos*|watchos*) \
-			system_name=Darwin  \
-			;;                  \
-		*)                      \
-			system_name=Linux   \
-			;;                  \
-	esac
-
-	{ \
-		cmake_osx_flags=""; \
-		case "$(host_os)" in \
-			ios*) \
-				if test -n "$(SDKROOT)"; then \
-					cmake_osx_flags="$$cmake_osx_flags -DCMAKE_OSX_SYSROOT=$(SDKROOT)"; \
-				fi; \
-				if test -n "$(IOS_MIN_VERSION)"; then \
-					cmake_osx_flags="$$cmake_osx_flags -DCMAKE_OSX_DEPLOYMENT_TARGET=$(IOS_MIN_VERSION)"; \
-				fi; \
-				;; \
-		esac; \
-	}
-
-	# The extra CMAKE_C_FLAGS are needed because otherwise boringssl fails to
-	# compile in release mode on some systems with gcc 12 (e.g. Fedora).
-	# In addition, guard these options with -Wno-unknown-warning-option to
-	# prevent clang from failing on them.
+	cd $(boringssl_install_dir) && \
 	@cmake@ -DCMAKE_BUILD_TYPE=Release \
 			-DCMAKE_POSITION_INDEPENDENT_CODE=on \
 			-DCMAKE_C_FLAGS="$(wordlist 2,999,$(CC)) $(CFLAGS) -Wno-unknown-warning-option -Wno-stringop-overflow -Wno-array-bounds -Wno-macro-redefined" \
 			-DCMAKE_CXX_FLAGS="$(wordlist 2,999,$(CXX)) $(CXXFLAGS) -Wno-macro-redefined" \
 			-DCMAKE_CXX_COMPILER="$(firstword $(CXX))" \
 			-DCMAKE_C_COMPILER="$(firstword $(CC))" \
-			-DCMAKE_SYSTEM_NAME=$$system_name \
+			-DCMAKE_SYSTEM_NAME=$(system_name) \
 			-DCMAKE_SYSTEM_PROCESSOR=$(host_cpu) \
-			$$cmake_osx_flags \
+			$(cmake_osx_flags) \
 			-GNinja \
 			$(CMAKE_EXTRA_ARGS) \
-			"$(srcdir)/boringssl-$(BORING_SSL_COMMIT)"
+			.. && \
 	@ninja@ -j$(SUBJOBS) crypto ssl
 
 	# Fix the directory structure so that curl can compile against it.
 	# See: https://everything.curl.dev/build/boringssl.html
 	mkdir -p $(boringssl_dir)/lib
-	cp ssl/libssl.a $(boringssl_dir)/lib
-	cp crypto/libcrypto.a $(boringssl_dir)/lib
+	cp $(boringssl_install_dir)/libssl.a $(boringssl_dir)/lib
+	cp $(boringssl_install_dir)/libcrypto.a $(boringssl_dir)/lib
 
 
 nghttp2-$(NGHTTP2_VERSION).tar.bz2:
@@ -317,10 +261,6 @@ nghttp2-$(NGHTTP2_VERSION).tar.bz2:
 $(nghttp2_static_libs): nghttp2-$(NGHTTP2_VERSION).tar.bz2
 	tar -xf nghttp2-$(NGHTTP2_VERSION).tar.bz2
 	cd nghttp2-$(NGHTTP2_VERSION) && \
-
-	# Set up the configure flags to nghttp2.
-	# If the user provided the --host flag to our configure script
-	# (for cross compilation), then pass it on to nghttp2.
 	{ \
 		config_flags="--prefix=$(nghttp2_install_dir)"; \
 		config_flags="$$config_flags --with-pic --enable-lib-only"; \
@@ -329,9 +269,8 @@ $(nghttp2_static_libs): nghttp2-$(NGHTTP2_VERSION).tar.bz2
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
 	} && \
-
-	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags
-	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags && \
+	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 
 ngtcp2-$(NGTCP2_VERSION).tar.bz2:
@@ -340,18 +279,13 @@ ngtcp2-$(NGTCP2_VERSION).tar.bz2:
 # Patch ngtcp2 and use a dummy '.patched' file to mark it patched
 ngtcp2-$(NGTCP2_VERSION)/.patched: $(srcdir)/patches/ngtcp2.patch
 	tar -xf ngtcp2-$(NGTCP2_VERSION).tar.bz2
-	cd ngtcp2-$(NGTCP2_VERSION)
+	cd ngtcp2-$(NGTCP2_VERSION) && \
 	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(ngtcp2_static_libs): ngtcp2-$(NGTCP2_VERSION).tar.bz2 ngtcp2-$(NGTCP2_VERSION)/.patched $(boringssl_static_libs)
-	cd ngtcp2-$(NGTCP2_VERSION)
-	autoreconf -i
-
-	# Set up the configure flags to ngtcp2.
-	# If the user provided the --host flag to our configure script
-	# (for cross compilation), then pass it on to ngtcp2.
-	# PKG_CONFIG_PATH=<somewhere1>/lib/pkgconfig:<somewhere2>/lib/pkgconfig LDFLAGS="-Wl,-rpath,<somewhere1>/lib"
+	cd ngtcp2-$(NGTCP2_VERSION) && \
+	autoreconf -i && \
 	{ \
 		config_flags="--prefix=$(ngtcp2_install_dir)"; \
 		config_flags="$$config_flags --with-pic --enable-lib-only"; \
@@ -360,13 +294,12 @@ $(ngtcp2_static_libs): ngtcp2-$(NGTCP2_VERSION).tar.bz2 ngtcp2-$(NGTCP2_VERSION)
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
 	} && \
-
 	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure PKG_CONFIG_PATH=$(nghttp3_install_dir)/lib/pkgconfig \
-		BORINGSSL_LIBS="-L$(boringssl_install_dir)/ssl -lssl -L$(boringssl_install_dir)/crypto -lcrypto -pthread" \
+		BORINGSSL_LIBS="-L$(boringssl_install_dir) -lssl -L$(boringssl_install_dir) -lcrypto -pthread" \
 		BORINGSSL_CFLAGS="-I$(boringssl_dir)/include" \
 		--with-boringssl \
-		$$config_flags
-	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
+		$$config_flags && \
+	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 
 nghttp3-$(NGHTTP3_VERSION).tar.bz2:
@@ -375,16 +308,12 @@ nghttp3-$(NGHTTP3_VERSION).tar.bz2:
 # Patch nghttp3 and use a dummy '.patched' file to mark it patched
 nghttp3-$(NGHTTP3_VERSION)/.patched: $(srcdir)/patches/nghttp3.patch
 	tar -xf nghttp3-$(NGHTTP3_VERSION).tar.bz2
-	cd nghttp3-$(NGHTTP3_VERSION)
+	cd nghttp3-$(NGHTTP3_VERSION) && \
 	for p in $^; do patch -p1 -N --batch < $$p || true; done
 	touch .patched
 
 $(nghttp3_static_libs): nghttp3-$(NGHTTP3_VERSION).tar.bz2 nghttp3-$(NGHTTP3_VERSION)/.patched
-	cd nghttp3-$(NGHTTP3_VERSION)
-
-	# Set up the configure flags to nghttp2.
-	# If the user provided the --host flag to our configure script
-	# (for cross compilation), then pass it on to nghttp2.
+	cd nghttp3-$(NGHTTP3_VERSION) && \
 	{ \
 		config_flags="--prefix=$(nghttp3_install_dir)"; \
 		config_flags="$$config_flags --with-pic --enable-lib-only"; \
@@ -393,9 +322,8 @@ $(nghttp3_static_libs): nghttp3-$(NGHTTP3_VERSION).tar.bz2 nghttp3-$(NGHTTP3_VER
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
 	} && \
-
-	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags
-	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" CXXFLAGS="$(CXXFLAGS) -fPIC" ./configure $$config_flags && \
+	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 
 libunistring-$(LIBUNISTRING_VERSION).tar.gz:
@@ -403,7 +331,7 @@ libunistring-$(LIBUNISTRING_VERSION).tar.gz:
 
 $(libunistring_static_libs): libunistring-$(LIBUNISTRING_VERSION).tar.gz
 	tar -xf libunistring-$(LIBUNISTRING_VERSION).tar.gz
-	cd libunistring-$(LIBUNISTRING_VERSION)
+	cd libunistring-$(LIBUNISTRING_VERSION) && \
 	{ \
 		config_flags="--prefix=$(libunistring_install_dir)"; \
 		config_flags="$$config_flags --disable-shared --enable-static --with-pic"; \
@@ -411,8 +339,8 @@ $(libunistring_static_libs): libunistring-$(LIBUNISTRING_VERSION).tar.gz
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
 	} && \
-	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" ./configure $$config_flags
-	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
+	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" ./configure $$config_flags && \
+	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 
 libidn2-$(LIBIDN2_VERSION).tar.gz:
@@ -420,18 +348,18 @@ libidn2-$(LIBIDN2_VERSION).tar.gz:
 
 $(libidn2_static_libs): libidn2-$(LIBIDN2_VERSION).tar.gz $(libunistring_static_libs)
 	tar -xf libidn2-$(LIBIDN2_VERSION).tar.gz
-	cd libidn2-$(LIBIDN2_VERSION)
+	cd libidn2-$(LIBIDN2_VERSION) && \
 	{ \
 		config_flags="--prefix=$(libidn2_install_dir)"; \
 		config_flags="$$config_flags --disable-shared --enable-static --with-pic --disable-nls"; \
 		if test -n "$(host_alias)"; then \
 			config_flags="$$config_flags --host=$(host_alias)"; \
 		fi; \
-	}
+	} && \
 	PKG_CONFIG_PATH="$(libunistring_install_dir)/lib/pkgconfig" \
 	CC="$(CC)" CXX="$(CXX)" AR="$(AR)" RANLIB="$(RANLIB)" CFLAGS="$(CFLAGS) -fPIC" \
-		./configure $$config_flags
-	$(MAKE) MAKEFLAGS=-j$(SUBJOBS)
+		./configure $$config_flags && \
+	$(MAKE) MAKEFLAGS=-j$(SUBJOBS) && \
 	$(MAKE) install MAKEFLAGS=
 
 $(CURL_VERSION).tar.gz:
@@ -443,22 +371,15 @@ $(CURL_VERSION)/.patched: $(srcdir)/patches/curl.patch
 	rm -Rf $(CURL_VERSION)
 	tar -xf $(CURL_VERSION).tar.gz
 	mv curl-$(CURL_VERSION) $(CURL_VERSION)  # fix directory name
-	cd $(CURL_VERSION)
-	for p in $^; do patch -p1 -N --batch < $$p || true; done
-	# Re-generate the configure script
-	autoreconf -fi
-	touch .patched
+	cd $(CURL_VERSION) && \
+	for p in $^; do patch -p1 -N --batch < $$p || true; done && \
+	autoreconf -fi && \
+	touch ../.patched
 
 # This is a small hack that flags that curl was patched and configured in the "chrome" version
-$(CURL_VERSION)/.chrome: $(chrome_libs)	$(CURL_VERSION).tar.gz $(CURL_VERSION)/.patched
-	cd $(CURL_VERSION)
-
-	# Set up the configure flags to curl.
-	# If the user provided the --host flag to our configure script
-	# (for cross compilation), then pass it on to curl.
-
-	# XXX: psl should be enabled in the future:
-	# https://daniel.haxx.se/blog/2024/01/10/psl-in-curl/
+$(CURL_VERSION)/.chrome: $(chrome_libs) $(CURL_VERSION).tar.gz $(CURL_VERSION)/.patched
+	rm -f .chrome
+	cd $(CURL_VERSION) && \
 	{ \
 	  config_flags="--prefix=@prefix@"; \
 	  config_flags="$$config_flags --with-brotli=$(brotli_install_dir)"; \
@@ -504,11 +425,9 @@ $(CURL_VERSION)/.chrome: $(chrome_libs)	$(CURL_VERSION).tar.gz $(CURL_VERSION)/.
 	    *android*) add_libs="-pthread -lc++" ;; \
 	    *) add_libs="-pthread -lstdc++ -L$(libunistring_install_dir)/lib -lunistring" ;; \
 	  esac; \
-	}
-
-	echo PKG_CONFIG_PATH="$(ngtcp2_install_dir)/lib/pkgconfig"
-	echo "Configuring curl with: $$config_flags"
-
+	} && \
+	echo PKG_CONFIG_PATH="$(ngtcp2_install_dir)/lib/pkgconfig" && \
+	echo "Configuring curl with: $$config_flags" && \
 	{ \
 		lib_path="$(nghttp2_install_dir)/lib:$(ngtcp2_install_dir)/lib:$(nghttp3_install_dir)/lib:$(zstd_install_dir)/lib:$(zlib_install_dir)/lib:$(brotli_install_dir)/lib"; \
 		case "$(host_os)" in \
@@ -516,8 +435,7 @@ $(CURL_VERSION)/.chrome: $(chrome_libs)	$(CURL_VERSION).tar.gz $(CURL_VERSION)/.
 		  *android*) ;; \
 		  *) lib_path="$$lib_path:$(libidn2_install_dir)/lib:$(libunistring_install_dir)/lib" ;; \
 		esac; \
-	}
-
+	} && \
 	DYLD_LIBRARY_PATH="$$lib_path" \
 	LD_LIBRARY_PATH="$$lib_path" \
 	PKG_CONFIG_LIBDIR= \
@@ -530,8 +448,5 @@ $(CURL_VERSION)/.chrome: $(chrome_libs)	$(CURL_VERSION).tar.gz $(CURL_VERSION)/.
 	LDFLAGS="$(LDFLAGS)" \
 		./configure \
 			 $$config_flags \
-			 LIBS="$$add_libs"
-
-	# Remove possible leftovers from a previous compilation
-	$(MAKE) clean MAKEFLAGS=
-	touch .chrome
+			 LIBS="$$add_libs" && \
+	touch ../.chrome
