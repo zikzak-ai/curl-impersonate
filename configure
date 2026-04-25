@@ -594,6 +594,8 @@ PACKAGE_URL=''
 
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+cmake_osx_flags
+system_name
 ninja
 cmake
 with_ca_path
@@ -4090,6 +4092,44 @@ fi
 
   test -n "$ninja" && break
 done
+
+
+# Convert autoconf style os name to CMake style os name.
+case $host_os in
+    linux*)
+        system_name=Linux
+        ;;
+    *android*)
+        system_name=Android
+        ;;
+    ios*)
+        system_name=iOS
+        ;;
+    darwin*)
+        system_name=Darwin
+        ;;
+    *)
+        system_name=$host_os
+        ;;
+esac
+
+
+# CMake flags for Apple platforms
+cmake_osx_flags=""
+case $host_os in
+    ios*)
+        if test -n "$SDKROOT"; then
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_SYSROOT=$SDKROOT"
+        elif test "$host_cpu" = "x86_64"; then
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_SYSROOT=iphonesimulator"
+        else
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_SYSROOT=iphoneos"
+        fi
+        if test -n "$IOS_MIN_VERSION"; then
+            cmake_osx_flags="$cmake_osx_flags -DCMAKE_OSX_DEPLOYMENT_TARGET=$IOS_MIN_VERSION"
+        fi
+        ;;
+esac
 
 
 ac_config_files="$ac_config_files Makefile"
